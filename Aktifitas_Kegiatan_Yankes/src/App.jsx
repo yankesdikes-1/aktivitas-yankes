@@ -24,6 +24,7 @@ export default function App() {
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState(null);
   
+  // Pop-up GIF Sambutan Awal (aktif di kedua mode)
   const [showGifModal, setShowGifModal] = useState(true);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
@@ -48,6 +49,8 @@ export default function App() {
     // Deteksi perubahan URL hash secara real-time
     const handleHashChange = () => {
       setIsPublicRekap(window.location.hash === '#rekap');
+      // Munculkan kembali pop-up sambutan saat berpindah halaman/hash
+      setShowGifModal(true);
     };
 
     window.addEventListener('hashchange', handleHashChange);
@@ -346,17 +349,67 @@ export default function App() {
 
   // =========================================================================
   // JIKA DIAKSES MELALUI LINK KHUSUS REKAP (#rekap)
-  // Tampilan Terisolasi Murni View-Only (Tanpa tombol kembali & Tanpa Admin Panel)
   // =========================================================================
   if (isPublicRekap) {
     return (
       <div className="min-h-screen bg-slate-100 text-slate-800 p-4 sm:p-8 font-sans">
+        
+        {/* POP-UP GIF SAMBUTAN AWAL DI HALAMAN REKAP */}
+        {showGifModal && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md">
+            <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-emerald-100 text-center relative overflow-hidden animate-in fade-in zoom-in duration-200">
+              <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-emerald-500 to-teal-400"></div>
+
+              <button 
+                onClick={() => setShowGifModal(false)}
+                className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-full transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-inner">
+                <Sparkles className="w-7 h-7 animate-pulse" />
+              </div>
+
+              <h3 className="text-lg font-bold text-slate-800 mb-1">Selamat Datang Sahabat Yankes! 👋</h3>
+              <p className="text-xs text-slate-500 mb-4 px-2">
+                Sistem Rekapitulasi Kegiatan & Petugas - Bidang Pelayanan Kesehatan Dinas Kesehatan Kabupaten Badung.
+              </p>
+
+              <div className="rounded-2xl overflow-hidden shadow-md border border-slate-100 mb-5 bg-slate-50 flex items-center justify-center h-44">
+                <img 
+                  src="https://media.giphy.com/media/fTUhnIKty0O3JqzQkm/giphy.gif" 
+                  alt="Animated Welcome GIF" 
+                  className="w-full h-full object-cover"
+                />
+              </div>
+
+              <button
+                onClick={() => setShowGifModal(false)}
+                className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-sm font-semibold shadow-lg shadow-emerald-700/20 transition cursor-pointer"
+              >
+                Lihat Rekapan Petugas 🚀
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="max-w-4xl mx-auto">
           {/* Header Publik */}
           <div className="bg-emerald-700 text-white p-6 sm:p-8 rounded-3xl shadow-lg mb-6 text-center relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-teal-300 to-emerald-400"></div>
-            <div className="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-3 backdrop-blur-xs">
-              <Users className="w-7 h-7 text-white" />
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center mx-auto backdrop-blur-xs">
+                <Users className="w-6 h-6 text-white" />
+              </div>
+              <button
+                onClick={() => setShowGifModal(true)}
+                className="bg-emerald-800/80 hover:bg-emerald-800 text-white p-2 rounded-xl text-xs flex items-center gap-1.5 transition cursor-pointer border border-emerald-600"
+                title="Lihat Sambutan"
+              >
+                <Sparkles className="w-4 h-4 text-emerald-200" />
+                <span className="hidden sm:inline">Sambutan</span>
+              </button>
             </div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight">REKAPAN NAMA PETUGAS & KEGIATAN YANKES</h1>
             <p className="text-emerald-100 text-xs sm:text-sm mt-1">Bidang Pelayanan Kesehatan - Dinas Kesehatan Kabupaten Badung</p>
@@ -408,7 +461,6 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Rincian Nama Kegiatan */}
                     <div className="mt-3 pl-0 sm:pl-10 space-y-2 border-t border-slate-200/60 pt-3">
                       <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Daftar Kegiatan:</p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -525,7 +577,6 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-wrap">
-            {/* Tombol salin / buka link khusus rekap */}
             <a
               href="#rekap"
               target="_blank"
@@ -905,7 +956,7 @@ export default function App() {
 
                 {names.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-                    {names.name?.map ? null : names.map((name, idx) => (
+                    {names.map((name, idx) => (
                       <span key={idx} className="inline-flex items-center gap-1.5 bg-white text-slate-700 text-xs px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs font-medium">
                         {name}
                         <button type="button" onClick={() => handleRemoveName(idx)} className="text-slate-400 hover:text-rose-600 transition ml-1 cursor-pointer">
