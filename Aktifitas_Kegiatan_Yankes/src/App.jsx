@@ -31,7 +31,7 @@ export default function App() {
   
   // Form State
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('Pekerjaan');
+  const [category, setCategory] = useState('Cuti');
   const [priority, setPriority] = useState('Sedang');
   const [date, setDate] = useState(todayStr);
   
@@ -260,7 +260,7 @@ export default function App() {
 
   const resetForm = () => {
     setTitle('');
-    setCategory('Pekerjaan');
+    setCategory('Cuti');
     setPriority('Sedang');
     setDate(todayStr);
     setNames([]);
@@ -547,6 +547,7 @@ export default function App() {
                 <option value="Sakit">Sakit</option>
                 <option value="Dinas">Dinas</option>
                 <option value="Rapat">Rapat</option>
+                <option value="Ijin">Ijin</option>
               </select>
             </div>
 
@@ -811,6 +812,7 @@ export default function App() {
                     <option value="Sakit">Sakit</option>
                     <option value="Dinas">Dinas</option>
                     <option value="Rapat">Rapat</option>
+                    <option value="Ijin">Ijin</option>
                   </select>
                 </div>
 
