@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ClipboardList, Plus, Search, Filter, Calendar, CheckCircle2, 
   Clock, AlertCircle, FileText, Upload, Trash2, Edit2, X, 
-  Users, Check, ExternalLink, ShieldCheck, Database, Download, Award, Sparkles
+  Users, Check, ExternalLink, ShieldCheck, Database, Download, Award, Sparkles, ArrowLeft
 } from 'lucide-react';
 import { supabase } from './supabase';
 
@@ -13,32 +13,25 @@ export default function App() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   
-  // Filter Tanggal (Default: Tanggal hari ini)
-  const todayStr = new Date().toISOString().split('T')[0];
-  const [dateFilter, setDateFilter] = useState(todayStr); // 'all' atau format 'YYYY-MM-DD'
+  // State untuk mode tampilan khusus rekap ('dashboard' atau 'rekap-only')
+  const [viewMode, setViewMode] = useState('dashboard');
   
-  // Modal State
+  const todayStr = new Date().toISOString().split('T')[0];
+  const [dateFilter, setDateFilter] = useState(todayStr);
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState(null);
-  
-  // Pop-up GIF Sambutan Awal
   const [showGifModal, setShowGifModal] = useState(true);
-
-  // Pop-up Sukses Tambah/Edit Kegiatan
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   
-  // Form State
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Cuti');
   const [priority, setPriority] = useState('Sedang');
   const [date, setDate] = useState(todayStr);
-  
-  // Ubah names menjadi array dan tambahkan inputName sementara
   const [names, setNames] = useState([]);
   const [inputName, setInputName] = useState('');
-
   const [pdfFile, setPdfFile] = useState(null);
   const [pdfUrl, setPdfUrl] = useState('');
   const [pdfName, setPdfName] = useState('');
@@ -46,6 +39,22 @@ export default function App() {
 
   useEffect(() => {
     fetchActivities();
+    
+    // Cek jika URL memiliki hash #rekap, langsung buka mode rekap khusus
+    if (window.location.hash === '#rekap') {
+      setViewMode('rekap-only');
+    }
+    
+    const handleHashChange = () => {
+      if (window.location.hash === '#rekap') {
+        setViewMode('rekap-only');
+      } else {
+        setViewMode('dashboard');
+      }
+    };
+    
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
   const fetchActivities = async () => {
@@ -56,9 +65,7 @@ export default function App() {
         .select('*')
         .order('date', { ascending: true });
 
-      if (error) {
-        throw error;
-      }
+      if (error) throw error;
       setActivities(data || []);
     } catch (error) {
       console.error('Error fetching activities:', error);
@@ -186,24 +193,15 @@ export default function App() {
 
       resetForm();
       setIsModalOpen(false);
-      
-      // Tampilkan Pop-up Sukses
       setSuccessMessage(actionType);
       setShowSuccessModal(true);
 
     } catch (err) {
       console.error('Save error:', err);
-      if (isEditing) {
-        const updated = activities.map(act => act.id === currentId ? { ...act, ...newActivity } : act);
-        saveToLocalAndState(updated);
-      } else {
-        const offlineItem = { id: Date.now(), ...newActivity };
-        saveToLocalAndState([offlineItem, ...activities]);
-      }
+      const offlineItem = { id: Date.now(), ...newActivity };
+      saveToLocalAndState([offlineItem, ...activities]);
       resetForm();
       setIsModalOpen(false);
-
-      // Tampilkan Pop-up Sukses (mode offline/fallback)
       setSuccessMessage(actionType);
       setShowSuccessModal(true);
     }
@@ -211,13 +209,7 @@ export default function App() {
 
   const toggleComplete = async (id, currentStatus) => {
     try {
-      const { error } = await supabase
-        .from('activities')
-        .update({ completed: !currentStatus })
-        .eq('id', id);
-
-      if (error) throw error;
-
+      await supabase.from('activities').update({ completed: !currentStatus }).eq('id', id);
       const updated = activities.map(act => act.id === id ? { ...act, completed: !currentStatus } : act);
       saveToLocalAndState(updated);
     } catch (err) {
@@ -229,13 +221,7 @@ export default function App() {
   const handleDelete = async (id) => {
     if (!confirm('Apakah Anda yakin ingin menghapus kegiatan ini?')) return;
     try {
-      const { error } = await supabase
-        .from('activities')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
-
+      await supabase.from('activities').delete().eq('id', id);
       const updated = activities.filter(act => act.id !== id);
       saveToLocalAndState(updated);
     } catch (err) {
@@ -280,7 +266,6 @@ export default function App() {
       statusFilter === 'completed' ? act.completed : !act.completed;
     
     const matchesCategory = categoryFilter === 'all' ? true : act.category === categoryFilter;
-
     const matchesDate = dateFilter === 'all' ? true : act.date === dateFilter;
 
     return matchesSearch && matchesStatus && matchesCategory && matchesDate;
@@ -289,7 +274,10 @@ export default function App() {
   const personnelSummary = (() => {
     const summaryMap = {}; 
     
-    filteredActivities.forEach(act => {
+    // Untuk tampilan rekap khusus, kita bisa gunakan seluruh data activities atau yang terfilter
+    const targetData = viewMode === 'rekap-only' ? activities : filteredActivities;
+
+    targetData.forEach(act => {
       if (Array.isArray(act.names)) {
         act.names.forEach(name => {
           const trimmed = name.trim();
@@ -298,7 +286,6 @@ export default function App() {
               summaryMap[trimmed] = { total: 0, categories: {} };
             }
             summaryMap[trimmed].total += 1;
-
             const cat = act.category || 'Lainnya';
             summaryMap[trimmed].categories[cat] = (summaryMap[trimmed].categories[cat] || 0) + 1;
           }
@@ -326,11 +313,7 @@ export default function App() {
       `"${act.completed ? 'Selesai' : 'Belum Selesai'}"`
     ]);
 
-    const csvContent = [
-      headers.join(';'),
-      ...rows.map(e => e.join(';'))
-    ].join('\n');
-
+    const csvContent = [headers.join(';'), ...rows.map(e => e.join(';'))].join('\n');
     const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -346,6 +329,100 @@ export default function App() {
   const pendingCount = totalCount - completedCount;
   const completionRate = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
+  // ==========================================
+  // JIKA DALAM MODE TAMPILAN KHUSUS REKAP SAJA
+  // ==========================================
+  if (viewMode === 'rekap-only') {
+    return (
+      <div className="min-h-screen bg-slate-100 text-slate-800 p-4 sm:p-8 font-sans">
+        <div className="max-w-3xl mx-auto">
+          {/* Header Rekap Khusus */}
+          <div className="bg-emerald-700 text-white p-6 rounded-3xl shadow-lg mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-4 text-center sm:text-left">
+              <div className="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center shrink-0 mx-auto">
+                <Users className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold">REKAPAN NAMA PETUGAS</h1>
+                <p className="text-emerald-100 text-xs mt-0.5">Bidang Pelayanan Kesehatan - Dinas Kesehatan Kabupaten Badung</p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                window.location.hash = '';
+                setViewMode('dashboard');
+              }}
+              className="bg-white text-emerald-700 hover:bg-emerald-50 px-4 py-2.5 rounded-xl font-semibold text-xs flex items-center gap-2 shadow transition cursor-pointer shrink-0"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Kembali ke Dashboard Utama</span>
+            </button>
+          </div>
+
+          {/* Konten Daftar Rekap Petugas */}
+          <div className="bg-white rounded-3xl p-6 shadow-md border border-slate-200">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
+              <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+                <Award className="w-5 h-5 text-emerald-600" />
+                <span>Akumulasi Keikutsertaan Seluruh Petugas</span>
+              </h3>
+              <span className="bg-emerald-50 text-emerald-700 font-bold text-xs px-3 py-1.5 rounded-xl">
+                {personnelSummary.length} Orang Terdaftar
+              </span>
+            </div>
+
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-emerald-600 border-t-transparent"></div>
+                <p className="mt-3 text-slate-400 text-xs">Memuat data rekap petugas...</p>
+              </div>
+            ) : personnelSummary.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 text-sm">
+                Belum ada data nama petugas yang tercatat dalam sistem.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {personnelSummary.map(([name, data], index) => (
+                  <div key={index} className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl transition hover:bg-emerald-50/40">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-3">
+                        <span className="w-7 h-7 rounded-xl bg-emerald-700 text-white text-xs font-bold flex items-center justify-center shrink-0 shadow-sm">
+                          {index + 1}
+                        </span>
+                        <span className="text-sm font-bold text-slate-800">
+                          {name}
+                        </span>
+                      </div>
+                      <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-xl shadow-2xs">
+                        {data.total} Kegiatan Total
+                      </span>
+                    </div>
+
+                    {/* Rincian Kategori */}
+                    <div className="flex flex-wrap gap-1.5 pl-10">
+                      {Object.entries(data.categories).map(([cat, count], idxCat) => (
+                        <span key={idxCat} className="text-xs bg-white text-slate-600 border border-slate-200 px-2.5 py-1 rounded-lg font-medium shadow-2xs">
+                          {cat}: <strong className="text-emerald-700">{count}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          <div className="text-center mt-6 text-xs text-slate-400">
+            Link khusus ini dapat dibagikan untuk memantau rekapitulasi petugas secara transparan.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // TAMPILAN DASHBOARD UTAMA
+  // ==========================================
   return (
     <div className="min-h-screen bg-slate-100/60 text-slate-800 pb-12 font-sans">
       
@@ -389,7 +466,7 @@ export default function App() {
         </div>
       )}
 
-      {/* POP-UP NOTIFIKASI SUKSES SETELAH TAMBAH / EDIT KEGIATAN */}
+      {/* POP-UP NOTIFIKASI SUKSES */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-md">
           <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-emerald-100 text-center relative overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -426,7 +503,18 @@ export default function App() {
               <p className="text-emerald-100 text-xs sm:text-sm font-medium mt-0.5">Bidang Pelayanan Kesehatan - Dinas Kesehatan Kabupaten Badung</p>
             </div>
           </div>
-          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-wrap">
+            {/* Tombol menuju halaman khusus rekap */}
+            <a
+              href="#rekap"
+              onClick={() => setViewMode('rekap-only')}
+              className="bg-emerald-800 hover:bg-emerald-900 text-white px-3.5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition cursor-pointer shrink-0 border border-emerald-600"
+              title="Buka link khusus rekap petugas"
+            >
+              <Users className="w-4 h-4 text-emerald-300" />
+              <span>Link Khusus Rekap</span>
+            </a>
+
             <button
               onClick={() => setShowGifModal(true)}
               className="bg-emerald-800/80 hover:bg-emerald-800 text-white p-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center transition cursor-pointer shrink-0"
@@ -434,6 +522,7 @@ export default function App() {
             >
               <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-200" />
             </button>
+
             <button
               onClick={() => { resetForm(); setIsModalOpen(true); }}
               className="bg-white text-emerald-700 hover:bg-emerald-50 px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition cursor-pointer shrink-0"
@@ -486,7 +575,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Filters, Search Toolbar & Export Excel */}
+        {/* Filters & Toolbar */}
         <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-xs border border-slate-200/70 mb-6 flex flex-col lg:flex-row gap-3.5 items-center justify-between">
           <div className="relative w-full lg:w-72">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -500,7 +589,6 @@ export default function App() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
-            {/* Filter Tanggal */}
             <div className="flex items-center gap-2 bg-slate-50/80 border border-slate-200 rounded-xl px-3 py-2 w-full sm:w-auto">
               <Calendar className="w-4 h-4 text-slate-500 shrink-0" />
               <input
@@ -508,40 +596,25 @@ export default function App() {
                 value={dateFilter === 'all' ? '' : dateFilter}
                 onChange={(e) => setDateFilter(e.target.value || 'all')}
                 className="bg-transparent text-sm text-slate-700 focus:outline-none cursor-pointer w-full"
-                title="Pilih Tanggal Kegiatan"
               />
               {dateFilter !== 'all' && (
-                <button
-                  onClick={() => setDateFilter('all')}
-                  className="text-xs text-rose-600 font-semibold hover:underline ml-1 shrink-0 cursor-pointer"
-                  title="Tampilkan Semua Tanggal"
-                >
+                <button onClick={() => setDateFilter('all')} className="text-xs text-rose-600 font-semibold hover:underline ml-1 shrink-0 cursor-pointer">
                   Semua
                 </button>
               )}
             </div>
 
-            {/* Filter Status */}
             <div className="flex items-center gap-2 bg-slate-50/80 border border-slate-200 rounded-xl px-3 py-2 w-full sm:w-auto">
               <Filter className="w-4 h-4 text-slate-500 shrink-0" />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="bg-transparent text-sm text-slate-700 focus:outline-none cursor-pointer w-full"
-              >
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="bg-transparent text-sm text-slate-700 focus:outline-none cursor-pointer w-full">
                 <option value="all">Semua Status</option>
                 <option value="pending">Belum Selesai</option>
                 <option value="completed">Selesai</option>
               </select>
             </div>
 
-            {/* Filter Kategori */}
             <div className="flex items-center gap-2 bg-slate-50/80 border border-slate-200 rounded-xl px-3 py-2 w-full sm:w-auto">
-              <select
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
-                className="bg-transparent text-sm text-slate-700 focus:outline-none cursor-pointer w-full"
-              >
+              <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="bg-transparent text-sm text-slate-700 focus:outline-none cursor-pointer w-full">
                 <option value="all">Semua Kategori</option>
                 <option value="Cuti">Cuti</option>
                 <option value="Sakit">Sakit</option>
@@ -551,11 +624,9 @@ export default function App() {
               </select>
             </div>
 
-            {/* Tombol Export Excel */}
             <button
               onClick={exportToExcel}
               className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center gap-2 shadow-2xs transition cursor-pointer w-full sm:w-auto justify-center shrink-0"
-              title="Download Data ke Excel"
             >
               <Download className="w-4 h-4" />
               <span>Download Excel</span>
@@ -563,10 +634,10 @@ export default function App() {
           </div>
         </div>
 
-        {/* Main Content Layout (Grid dengan Panel Rekapan di Kanan) */}
+        {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
           
-          {/* Bagian Kiri: Daftar Kegiatan (3 Kolom) */}
+          {/* Daftar Kegiatan */}
           <div className="lg:col-span-3">
             {loading ? (
               <div className="text-center py-16 bg-white rounded-2xl border border-slate-200/70 shadow-xs">
@@ -577,7 +648,6 @@ export default function App() {
               <div className="text-center py-16 bg-white rounded-2xl border border-slate-200/70 shadow-xs">
                 <ClipboardList className="w-12 h-12 text-slate-300 mx-auto mb-3" />
                 <p className="text-slate-700 font-semibold">Tidak ada kegiatan ditemukan untuk filter ini</p>
-                <p className="text-slate-400 text-sm mt-1">Ubah filter tanggal atau pencarian di atas untuk melihat data lainnya.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -588,29 +658,17 @@ export default function App() {
                     'bg-emerald-50 text-emerald-700 border-emerald-200';
 
                   return (
-                    <div 
-                      key={act.id} 
-                      className={`bg-white rounded-2xl p-5 border shadow-xs transition flex flex-col justify-between ${
-                        act.completed ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200/70 hover:shadow-md'
-                      }`}
-                    >
+                    <div key={act.id} className={`bg-white rounded-2xl p-5 border shadow-xs transition flex flex-col justify-between ${act.completed ? 'border-emerald-300 bg-emerald-50/20' : 'border-slate-200/70 hover:shadow-md'}`}>
                       <div>
-                        {/* Top Meta: Kategori & Prioritas */}
                         <div className="flex items-center justify-between gap-2 mb-2.5">
-                          <span className="text-xs font-semibold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg">
-                            {act.category}
-                          </span>
-                          <span className={`text-xs font-medium px-2.5 py-1 rounded-lg border ${priorityColor}`}>
-                            {act.priority}
-                          </span>
+                          <span className="text-xs font-semibold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg">{act.category}</span>
+                          <span className={`text-xs font-medium px-2.5 py-1 rounded-lg border ${priorityColor}`}>{act.priority}</span>
                         </div>
 
-                        {/* Title Kegiatan */}
                         <h3 className={`font-bold text-base mb-2 leading-snug ${act.completed ? 'line-through text-slate-400' : 'text-slate-800'}`}>
                           {act.title}
                         </h3>
 
-                        {/* Tanggal Kegiatan */}
                         {act.date && (
                           <div className="flex items-center gap-2 text-xs font-semibold text-emerald-700 bg-emerald-50/80 px-3 py-1.5 rounded-xl mb-3.5 border border-emerald-100">
                             <Calendar className="w-4 h-4 text-emerald-600 shrink-0" />
@@ -618,7 +676,6 @@ export default function App() {
                           </div>
                         )}
 
-                        {/* Names / Assigned Personnel */}
                         {act.names && Array.isArray(act.names) && act.names.length > 0 && (
                           <div className="mb-4 bg-slate-50 p-3.5 rounded-xl border border-slate-200/60">
                             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 mb-2">
@@ -627,12 +684,7 @@ export default function App() {
                             </div>
                             <div className="flex flex-wrap gap-1.5">
                               {act.names.map((name, idx) => (
-                                <span 
-                                  key={idx} 
-                                  onClick={() => setSearchTerm(name)}
-                                  className="bg-white text-emerald-900 text-xs px-2.5 py-1 rounded-lg border border-emerald-200/80 font-semibold shadow-2xs cursor-pointer hover:bg-emerald-50 transition"
-                                  title="Klik untuk filter kegiatan petugas ini"
-                                >
+                                <span key={idx} onClick={() => setSearchTerm(name)} className="bg-white text-emerald-900 text-xs px-2.5 py-1 rounded-lg border border-emerald-200/80 font-semibold shadow-2xs cursor-pointer hover:bg-emerald-50 transition">
                                   ✓ {name}
                                 </span>
                               ))}
@@ -640,15 +692,9 @@ export default function App() {
                           </div>
                         )}
 
-                        {/* PDF Attachment */}
                         {act.pdf_url && (
                           <div className="mb-4">
-                            <a 
-                              href={act.pdf_url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-2 text-xs bg-slate-50 text-slate-700 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 transition font-medium w-full truncate"
-                            >
+                            <a href={act.pdf_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-xs bg-slate-50 text-slate-700 px-3 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 transition font-medium w-full truncate">
                               <FileText className="w-4 h-4 shrink-0 text-emerald-600" />
                               <span className="truncate">{act.pdf_name || 'Dokumen PDF'}</span>
                               <ExternalLink className="w-3.5 h-3.5 ml-auto shrink-0 text-slate-400" />
@@ -657,33 +703,16 @@ export default function App() {
                         )}
                       </div>
 
-                      {/* Footer Actions */}
                       <div className="pt-3.5 border-t border-slate-100 flex items-center justify-between mt-2">
-                        <button
-                          onClick={() => toggleComplete(act.id, act.completed)}
-                          className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer ${
-                            act.completed 
-                              ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' 
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                          }`}
-                        >
+                        <button onClick={() => toggleComplete(act.id, act.completed)} className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer ${act.completed ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                           <Check className="w-4 h-4" />
                           <span>{act.completed ? 'Selesai' : 'Tandai Selesai'}</span>
                         </button>
-
                         <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => handleEdit(act)}
-                            className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
-                            title="Edit"
-                          >
+                          <button onClick={() => handleEdit(act)} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded-xl transition cursor-pointer" title="Edit">
                             <Edit2 className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => handleDelete(act.id)}
-                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
-                            title="Hapus"
-                          >
+                          <button onClick={() => handleDelete(act.id)} className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer" title="Hapus">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
@@ -695,7 +724,7 @@ export default function App() {
             )}
           </div>
 
-          {/* Bagian Kanan: Panel Akumulasi / Rekapan Petugas dengan Rincian Kategori */}
+          {/* Panel Rekap di Sisi Kanan */}
           <div className="lg:col-span-1 bg-white rounded-2xl p-5 border border-slate-200/70 shadow-xs sticky top-24">
             <div className="flex items-center justify-between pb-3.5 border-b border-slate-100 mb-4">
               <div className="flex items-center gap-2">
@@ -708,22 +737,17 @@ export default function App() {
             </div>
 
             <p className="text-xs text-slate-400 mb-3">
-              Akumulasi keikutsertaan petugas dan rincian kategori berdasarkan filter aktif.
+              Akumulasi keikutsertaan petugas berdasarkan filter aktif.
             </p>
 
             {personnelSummary.length === 0 ? (
               <div className="text-center py-8 text-slate-400 text-xs">
-                Belum ada data nama petugas pada filter ini.
+                Belum ada data nama petugas.
               </div>
             ) : (
               <div className="space-y-2.5 max-h-[calc(100vh-320px)] overflow-y-auto pr-1">
                 {personnelSummary.map(([name, data], index) => (
-                  <div 
-                    key={index}
-                    onClick={() => setSearchTerm(name)}
-                    className="p-3 bg-slate-50 hover:bg-emerald-50/60 border border-slate-200/60 rounded-xl cursor-pointer transition group"
-                    title={`Klik untuk melihat kegiatan ${name}`}
-                  >
+                  <div key={index} onClick={() => setSearchTerm(name)} className="p-3 bg-slate-50 hover:bg-emerald-50/60 border border-slate-200/60 rounded-xl cursor-pointer transition group">
                     <div className="flex items-center justify-between mb-1.5">
                       <div className="flex items-center gap-2 truncate">
                         <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center justify-center shrink-0">
@@ -738,7 +762,6 @@ export default function App() {
                       </span>
                     </div>
 
-                    {/* Rincian Kategori per Petugas */}
                     <div className="flex flex-wrap gap-1 pl-7">
                       {Object.entries(data.categories).map(([cat, count], idxCat) => (
                         <span key={idxCat} className="text-[10px] bg-white text-slate-600 border border-slate-200 px-2 py-0.5 rounded font-medium">
@@ -751,23 +774,22 @@ export default function App() {
               </div>
             )}
 
-            {searchTerm && (
-              <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                <span className="text-slate-500">Filter pencarian aktif</span>
-                <button 
-                  onClick={() => setSearchTerm('')}
-                  className="text-rose-600 font-semibold hover:underline cursor-pointer"
-                >
-                  Reset Pencarian
-                </button>
-              </div>
-            )}
+            <div className="mt-4 pt-3 border-t border-slate-100">
+              <a
+                href="#rekap"
+                onClick={() => setViewMode('rekap-only')}
+                className="w-full py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer"
+              >
+                <span>Buka Tampilan Penuh Rekap</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
           </div>
 
         </div>
       </main>
 
-      {/* Modal Add / Edit */}
+      {/* Modal Tambah/Edit */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl max-h-[90vh] overflow-y-auto">
@@ -775,10 +797,7 @@ export default function App() {
               <h2 className="text-lg font-bold text-slate-800">
                 {isEditing ? 'Edit Kegiatan Yankes' : 'Tambah Kegiatan Yankes Baru'}
               </h2>
-              <button 
-                onClick={() => setIsModalOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg transition cursor-pointer"
-              >
+              <button onClick={() => setIsModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 rounded-lg transition cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -800,14 +819,8 @@ export default function App() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
-                    Kategori
-                  </label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white"
-                  >
+                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Kategori</label>
+                  <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
                     <option value="Cuti">Cuti</option>
                     <option value="Sakit">Sakit</option>
                     <option value="Dinas">Dinas</option>
@@ -817,14 +830,8 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
-                    Prioritas
-                  </label>
-                  <select
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white"
-                  >
+                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Prioritas</label>
+                  <select value={priority} onChange={(e) => setPriority(e.target.value)} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
                     <option value="Rendah">Rendah</option>
                     <option value="Sedang">Sedang</option>
                     <option value="Tinggi">Tinggi</option>
@@ -834,73 +841,43 @@ export default function App() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
-                    Tanggal Kegiatan
-                  </label>
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white"
-                  />
+                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Tanggal Kegiatan</label>
+                  <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white" />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
-                    Upload Dokumen PDF
-                  </label>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Upload Dokumen PDF</label>
                   <label className="flex items-center justify-center gap-2 w-full px-3 py-2.5 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 cursor-pointer transition">
                     <Upload className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span className="truncate">{pdfName || 'Pilih PDF (Max 2MB)'}</span>
-                    <input 
-                      type="file" 
-                      accept="application/pdf" 
-                      onChange={handleFileUpload} 
-                      className="hidden" 
-                    />
+                    <input type="file" accept="application/pdf" onChange={handleFileUpload} className="hidden" />
                   </label>
                   {uploadingPdf && <p className="text-xs text-emerald-600 mt-1">Mengunggah PDF...</p>}
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
-                  Nama Petugas / Yang Mengikuti
-                </label>
+                <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Nama Petugas / Yang Mengikuti</label>
                 <div className="flex gap-2 mb-2">
                   <input
                     type="text"
                     placeholder="Contoh: Gus Satya"
                     value={inputName}
                     onChange={(e) => setInputName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleAddName();
-                      }
-                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddName(); }}}
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white"
                   />
-                  <button
-                    type="button"
-                    onClick={handleAddName}
-                    className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-sm font-semibold transition cursor-pointer shrink-0"
-                  >
+                  <button type="button" onClick={handleAddName} className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-sm font-semibold transition cursor-pointer shrink-0">
                     Tambah
                   </button>
                 </div>
 
-                {/* List Chip Nama Petugas yang Ditambahkan */}
                 {names.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
                     {names.map((name, idx) => (
                       <span key={idx} className="inline-flex items-center gap-1.5 bg-white text-slate-700 text-xs px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs font-medium">
                         {name}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveName(idx)}
-                          className="text-slate-400 hover:text-rose-600 transition ml-1 cursor-pointer"
-                        >
+                        <button type="button" onClick={() => handleRemoveName(idx)} className="text-slate-400 hover:text-rose-600 transition ml-1 cursor-pointer">
                           <X className="w-3.5 h-3.5" />
                         </button>
                       </span>
@@ -910,17 +887,10 @@ export default function App() {
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
-                >
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition cursor-pointer">
                   Batal
                 </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-sm font-semibold text-white shadow-sm transition cursor-pointer"
-                >
+                <button type="submit" className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-sm font-semibold text-white shadow-sm transition cursor-pointer">
                   {isEditing ? 'Simpan Perubahan' : 'Tambah Kegiatan'}
                 </button>
               </div>
