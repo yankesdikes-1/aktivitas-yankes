@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ClipboardList, Plus, Search, Filter, Calendar, CheckCircle2, 
   Clock, AlertCircle, FileText, Upload, Trash2, Edit2, X, 
-  Users, Check, ExternalLink, ShieldCheck, Database, Download, Award, Sparkles, ArrowLeft
+  Users, Check, ExternalLink, ShieldCheck, Database, Download, Award, Sparkles 
 } from 'lucide-react';
 import { supabase } from './supabase';
 
@@ -13,25 +13,30 @@ export default function App() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('all');
   
-  // State untuk mode tampilan khusus rekap ('dashboard' atau 'rekap-only')
-  const [viewMode, setViewMode] = useState('dashboard');
+  // Cek apakah URL saat ini adalah link khusus rekap publik (#rekap)
+  const [isPublicRekap, setIsPublicRekap] = useState(window.location.hash === '#rekap');
   
   const todayStr = new Date().toISOString().split('T')[0];
   const [dateFilter, setDateFilter] = useState(todayStr);
   
+  // Modal State (Dashboard Admin)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState(null);
+  
   const [showGifModal, setShowGifModal] = useState(true);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   
+  // Form State
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Cuti');
   const [priority, setPriority] = useState('Sedang');
   const [date, setDate] = useState(todayStr);
+  
   const [names, setNames] = useState([]);
   const [inputName, setInputName] = useState('');
+
   const [pdfFile, setPdfFile] = useState(null);
   const [pdfUrl, setPdfUrl] = useState('');
   const [pdfName, setPdfName] = useState('');
@@ -39,19 +44,12 @@ export default function App() {
 
   useEffect(() => {
     fetchActivities();
-    
-    if (window.location.hash === '#rekap') {
-      setViewMode('rekap-only');
-    }
-    
+
+    // Deteksi perubahan URL hash secara real-time
     const handleHashChange = () => {
-      if (window.location.hash === '#rekap') {
-        setViewMode('rekap-only');
-      } else {
-        setViewMode('dashboard');
-      }
+      setIsPublicRekap(window.location.hash === '#rekap');
     };
-    
+
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
@@ -208,7 +206,13 @@ export default function App() {
 
   const toggleComplete = async (id, currentStatus) => {
     try {
-      await supabase.from('activities').update({ completed: !currentStatus }).eq('id', id);
+      const { error } = await supabase
+        .from('activities')
+        .update({ completed: !currentStatus })
+        .eq('id', id);
+
+      if (error) throw error;
+
       const updated = activities.map(act => act.id === id ? { ...act, completed: !currentStatus } : act);
       saveToLocalAndState(updated);
     } catch (err) {
@@ -220,7 +224,13 @@ export default function App() {
   const handleDelete = async (id) => {
     if (!confirm('Apakah Anda yakin ingin menghapus kegiatan ini?')) return;
     try {
-      await supabase.from('activities').delete().eq('id', id);
+      const { error } = await supabase
+        .from('activities')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
       const updated = activities.filter(act => act.id !== id);
       saveToLocalAndState(updated);
     } catch (err) {
@@ -272,9 +282,8 @@ export default function App() {
 
   const personnelSummary = (() => {
     const summaryMap = {}; 
+    const targetData = isPublicRekap ? activities : filteredActivities;
     
-    const targetData = viewMode === 'rekap-only' ? activities : filteredActivities;
-
     targetData.forEach(act => {
       if (Array.isArray(act.names)) {
         act.names.forEach(name => {
@@ -284,11 +293,10 @@ export default function App() {
               summaryMap[trimmed] = { total: 0, categories: {}, activityList: [] };
             }
             summaryMap[trimmed].total += 1;
-            
+
             const cat = act.category || 'Lainnya';
             summaryMap[trimmed].categories[cat] = (summaryMap[trimmed].categories[cat] || 0) + 1;
-            
-            // Simpan detail kegiatan
+
             summaryMap[trimmed].activityList.push({
               title: act.title,
               category: cat,
@@ -336,55 +344,43 @@ export default function App() {
   const pendingCount = totalCount - completedCount;
   const completionRate = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
-  // ==========================================
-  // JIKA DALAM MODE TAMPILAN KHUSUS REKAP SAJA
-  // ==========================================
-  if (viewMode === 'rekap-only') {
+  // =========================================================================
+  // JIKA DIAKSES MELALUI LINK KHUSUS REKAP (#rekap)
+  // Tampilan Terisolasi Murni View-Only (Tanpa tombol kembali & Tanpa Admin Panel)
+  // =========================================================================
+  if (isPublicRekap) {
     return (
       <div className="min-h-screen bg-slate-100 text-slate-800 p-4 sm:p-8 font-sans">
         <div className="max-w-4xl mx-auto">
-          {/* Header Rekap Khusus */}
-          <div className="bg-emerald-700 text-white p-6 rounded-3xl shadow-lg mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4 text-center sm:text-left">
-              <div className="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center shrink-0 mx-auto">
-                <Users className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold">REKAPAN NAMA PETUGAS & KEGIATAN</h1>
-                <p className="text-emerald-100 text-xs mt-0.5">Bidang Pelayanan Kesehatan - Dinas Kesehatan Kabupaten Badung</p>
-              </div>
+          {/* Header Publik */}
+          <div className="bg-emerald-700 text-white p-6 sm:p-8 rounded-3xl shadow-lg mb-6 text-center relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-teal-300 to-emerald-400"></div>
+            <div className="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-3 backdrop-blur-xs">
+              <Users className="w-7 h-7 text-white" />
             </div>
-            <button
-              onClick={() => {
-                window.location.hash = '';
-                setViewMode('dashboard');
-              }}
-              className="bg-white text-emerald-700 hover:bg-emerald-50 px-4 py-2.5 rounded-xl font-semibold text-xs flex items-center gap-2 shadow transition cursor-pointer shrink-0"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Kembali ke Dashboard Utama</span>
-            </button>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight">REKAPAN NAMA PETUGAS & KEGIATAN YANKES</h1>
+            <p className="text-emerald-100 text-xs sm:text-sm mt-1">Bidang Pelayanan Kesehatan - Dinas Kesehatan Kabupaten Badung</p>
           </div>
 
-          {/* Konten Daftar Rekap Petugas dengan Nama Kegiatan */}
-          <div className="bg-white rounded-3xl p-6 shadow-md border border-slate-200">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
-              <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+          {/* Konten Daftar Rekap Petugas */}
+          <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-md border border-slate-200">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
+              <div className="flex items-center gap-2">
                 <Award className="w-5 h-5 text-emerald-600" />
-                <span>Akumulasi Keikutsertaan & Rincian Kegiatan Petugas</span>
-              </h3>
-              <span className="bg-emerald-50 text-emerald-700 font-bold text-xs px-3 py-1.5 rounded-xl">
+                <h3 className="font-bold text-slate-800 text-base">Akumulasi Keikutsertaan & Rincian Kegiatan</h3>
+              </div>
+              <span className="bg-emerald-50 text-emerald-700 font-bold text-xs px-3 py-1.5 rounded-xl border border-emerald-100">
                 {personnelSummary.length} Orang Terdaftar
               </span>
             </div>
 
             {loading ? (
-              <div className="text-center py-12">
+              <div className="text-center py-16">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-emerald-600 border-t-transparent"></div>
-                <p className="mt-3 text-slate-400 text-xs">Memuat data rekap petugas...</p>
+                <p className="mt-3 text-slate-400 text-xs font-medium">Memuat data rekap...</p>
               </div>
             ) : personnelSummary.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 text-sm">
+              <div className="text-center py-16 text-slate-400 text-sm">
                 Belum ada data nama petugas yang tercatat dalam sistem.
               </div>
             ) : (
@@ -436,18 +432,18 @@ export default function App() {
               </div>
             )}
           </div>
-          
+
           <div className="text-center mt-6 text-xs text-slate-400">
-            Link khusus ini dapat dibagikan untuk memantau rekapitulasi petugas dan rincian kegiatannya secara transparan.
+            Halaman Transparansi Rekapitulasi Kegiatan &bull; Bidang Pelayanan Kesehatan Kab. Badung
           </div>
         </div>
       </div>
     );
   }
 
-  // ==========================================
-  // TAMPILAN DASHBOARD UTAMA
-  // ==========================================
+  // =========================================================================
+  // TAMPILAN DASHBOARD UTAMA (ADMIN)
+  // =========================================================================
   return (
     <div className="min-h-screen bg-slate-100/60 text-slate-800 pb-12 font-sans">
       
@@ -529,11 +525,13 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-wrap">
+            {/* Tombol salin / buka link khusus rekap */}
             <a
               href="#rekap"
-              onClick={() => setViewMode('rekap-only')}
+              target="_blank"
+              rel="noopener noreferrer"
               className="bg-emerald-800 hover:bg-emerald-900 text-white px-3.5 py-2.5 rounded-xl font-semibold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition cursor-pointer shrink-0 border border-emerald-600"
-              title="Buka link khusus rekap petugas"
+              title="Buka tab baru untuk link khusus rekap petugas"
             >
               <Users className="w-4 h-4 text-emerald-300" />
               <span>Link Khusus Rekap</span>
@@ -794,7 +792,6 @@ export default function App() {
                       ))}
                     </div>
 
-                    {/* Rincian Nama Kegiatan Ringkas di Sidebar */}
                     <div className="pl-7 space-y-1 border-t border-slate-200/60 pt-2">
                       {data.activityList.map((act, actIdx) => (
                         <div key={actIdx} className="text-[11px] text-slate-600 bg-white px-2 py-1 rounded border border-slate-200/60 truncate" title={act.title}>
@@ -810,10 +807,11 @@ export default function App() {
             <div className="mt-4 pt-3 border-t border-slate-100">
               <a
                 href="#rekap"
-                onClick={() => setViewMode('rekap-only')}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="w-full py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer"
               >
-                <span>Buka Tampilan Penuh Rekap</span>
+                <span>Buka Link Rekap di Tab Baru</span>
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
@@ -907,7 +905,7 @@ export default function App() {
 
                 {names.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-                    {names.map((name, idx) => (
+                    {names.name?.map ? null : names.map((name, idx) => (
                       <span key={idx} className="inline-flex items-center gap-1.5 bg-white text-slate-700 text-xs px-3 py-1.5 rounded-lg border border-slate-200 shadow-2xs font-medium">
                         {name}
                         <button type="button" onClick={() => handleRemoveName(idx)} className="text-slate-400 hover:text-rose-600 transition ml-1 cursor-pointer">
